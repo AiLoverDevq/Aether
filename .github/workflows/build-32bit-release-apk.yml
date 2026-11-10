@@ -103,22 +103,22 @@ jobs:
 
       - name: Align APK
         run: |
-          # Find the unsigned APK (standard release build output)
-          APK_PATH=$(find app/build/outputs/apk/release -name "app-release-unsigned.apk" -o -name "app-release.apk" | head -1)
-          if [[ -z "$APK_PATH" ]]; then
-            # Fallback: find any APK in release dir
-            APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          # Standard release APK path
+          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          if [[ ! -f "$APK_PATH" ]]; then
+            # Try unsigned variant
+            APK_PATH="app/build/outputs/apk/release/app-release-unsigned.apk"
           fi
-          if [[ -n "$APK_PATH" ]]; then
-            echo "Found APK: $APK_PATH"
-            mkdir -p dist/32bit-release
-            zipalign -v -p 4 "$APK_PATH" "dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
-            echo "Aligned APK at dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
-          else
-            echo "ERROR: No APK found in app/build/outputs/apk/release/"
+          if [[ ! -f "$APK_PATH" ]]; then
+            echo "ERROR: APK not found at expected paths"
+            echo "Contents of release directory:"
             ls -la app/build/outputs/apk/release/
             exit 1
           fi
+          echo "Found APK: $APK_PATH"
+          mkdir -p dist/32bit-release
+          zipalign -v -p 4 "$APK_PATH" "dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
+          echo "Aligned APK at dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
 
       - name: Upload 32-bit Release APK
         uses: actions/upload-artifact@v7
