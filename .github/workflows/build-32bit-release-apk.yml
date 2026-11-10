@@ -117,7 +117,18 @@ jobs:
           fi
           echo "Found APK: $APK_PATH"
           mkdir -p dist/32bit-release
-          zipalign -v -p 4 "$APK_PATH" "dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
+          # zipalign is in build-tools directory
+          ZIPALIGN="/usr/local/lib/android/sdk/build-tools/35.0.0/zipalign"
+          if [[ ! -f "$ZIPALIGN" ]]; then
+            # Find zipalign in any build-tools version
+            ZIPALIGN=$(find /usr/local/lib/android/sdk/build-tools -name zipalign | head -1)
+          fi
+          if [[ ! -f "$ZIPALIGN" ]]; then
+            echo "ERROR: zipalign not found"
+            exit 1
+          fi
+          echo "Using zipalign: $ZIPALIGN"
+          "$ZIPALIGN" -v -p 4 "$APK_PATH" "dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
           echo "Aligned APK at dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
 
       - name: Upload 32-bit Release APK
