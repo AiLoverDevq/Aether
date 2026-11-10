@@ -48,7 +48,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: platform-tools
+          packages: platform-tools build-tools;35.0.0 platforms;android-36
+          accept-licenses: true
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
