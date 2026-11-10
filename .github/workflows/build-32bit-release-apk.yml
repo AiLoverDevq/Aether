@@ -1,0 +1,117 @@
+name: Build 32-bit Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name for the release (e.g., 2.1.8-32bit)'
+        required: false
+        default: ''
+      sign_apk:
+        description: 'Sign the APK with release keystore (requires secrets)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build-32bit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+          cache-dependency-path: pi-bridge/package-lock.json
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: enhanced
+          cache-read-only: false
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Prepare Version Name
+        id: version
+        shell: bash
+        run: |
+          if [[ -n "${{ github.event.inputs.version_name }}" ]]; then
+            echo "version_name=${{ github.event.inputs.version_name }}" >> "$GITHUB_OUTPUT"
+          else
+            short_sha="${GITHUB_SHA::12}"
+            echo "version_name=2.1.7-32bit-${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build 32-bit Release APK (unsigned)
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        run: |
+          ./gradlew :app:assembleRelease \
+            --stacktrace \
+            -Paether.versionName="$VERSION_NAME" \
+            -PabiFilter=armeabi-v7a
+
+      - name: Sign Release APK (optional)
+        if: ${{ github.event.inputs.sign_apk == 'true' }}
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$RELEASE_KEYSTORE_BASE64" ]]; then
+            echo "Release keystore not configured, skipping signing"
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/aether-signing"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/aether-signing/aether-release.jks"
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" -not -name "*-unsigned.apk" | head -1)
+          if [[ -z "$APK_PATH" ]]; then
+            APK_PATH=$(find app/build/outputs/apk/release -name "*-unsigned.apk" | head -1)
+          fi
+          if [[ -n "$APK_PATH" ]]; then
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore "$RUNNER_TEMP/aether-signing/aether-release.jks" \
+              -storepass "$RELEASE_KEYSTORE_PASSWORD" \
+              -keypass "$RELEASE_KEY_PASSWORD" \
+              "$APK_PATH" "$RELEASE_KEY_ALIAS"
+            echo "APK signed successfully"
+          fi
+
+      - name: Align APK
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          if [[ -n "$APK_PATH" ]]; then
+            mkdir -p dist/32bit-release
+            zipalign -v -p 4 "$APK_PATH" "dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
+            echo "Aligned APK at dist/32bit-release/Aether-32bit-${{ steps.version.outputs.version_name }}.apk"
+          fi
+
+      - name: Upload 32-bit Release APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: Aether-32bit-release-${{ steps.version.outputs.version_name }}
+          path: dist/32bit-release/*.apk
+          retention-days: 30

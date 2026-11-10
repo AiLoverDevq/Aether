@@ -118,7 +118,8 @@ android {
         versionName = appVersionName
 
         ndk {
-            abiFilters += "arm64-v8a"
+            val abiFilter = providers.gradleProperty("abiFilter").orElse("arm64-v8a").trim()
+            abiFilters += abiFilter
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
